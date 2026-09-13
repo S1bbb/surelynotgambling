@@ -1,0 +1,15 @@
+{
+  "name": "surely-not-gambling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.16" },
+  "scripts": {
+    "setup": "npm --prefix web ci",
+    "build": "npm --prefix web run build",
+    "start": "node server/index.mjs",
+    "dev": "node scripts/dev.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm --prefix web run typecheck"
+  }
+}
