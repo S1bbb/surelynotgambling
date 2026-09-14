@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowUpRight, Copy, ShieldCheck } from 'lucide-react';
 import { verifyHiLo, type VerificationInput } from '../lib/verify';
 import './fairness-checker.css';
@@ -35,8 +35,18 @@ export default function FairnessChecker({ round, retired }: Props) {
     ReturnType<typeof verifyHiLo>
   > | null>(null);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [automatic] = useState(() => round && form.serverSeed ? form : null);
+  const [busy, setBusy] = useState(Boolean(automatic));
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!automatic) return;
+    let cancelled = false;
+    verifyHiLo(automatic)
+      .then(value => { if (!cancelled) setResult(value); })
+      .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Не удалось выполнить проверку.'); })
+      .finally(() => { if (!cancelled) setBusy(false); });
+    return () => { cancelled = true; };
+  }, [automatic]);
   function change(key: keyof VerificationInput, value: string) {
     setForm((previous) => ({ ...previous, [key]: value }));
     setResult(null);
@@ -101,8 +111,8 @@ export default function FairnessChecker({ round, retired }: Props) {
         )}
         {round && !form.serverSeed && (
           <p className="proof-wait">
-            Серверный seed ещё не раскрыт. Завершите сессию ниже, затем
-            вернитесь к проверке.
+            Условия ставки уже подставлены. Серверный seed ещё не раскрыт.
+            Завершите сессию ниже — проверка запустится автоматически.
           </p>
         )}
         {field(

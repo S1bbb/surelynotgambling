@@ -227,9 +227,9 @@ export default function Home() {
           </thead>
           <tbody>
             {rounds.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className="bet-history-row">
                 <td>{new Date(r.createdAt).toLocaleTimeString('ru-RU')}</td>
-                <td>{money(r.amount)}</td>
+                <td><button className="bet-open" aria-label={`Открыть и проверить ставку ${r.id.slice(0, 8)}`} onClick={() => verify(r)}>{money(r.amount)}</button></td>
                 <td>
                   {r.direction === 'under' ? '<' : '≥'} {r.threshold}{' '}
                   <small>×{r.multiplier.toFixed(4)}</small>

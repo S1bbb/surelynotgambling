@@ -1,3 +1,9 @@
+.bet-history-row { position: relative; }
+.bet-history-row:hover { background: #24282b; }
+.bet-open { background: transparent; padding: 0; color: inherit; font: inherit; }
+.bet-open::after { content: ''; position: absolute; inset: 0; cursor: pointer; }
+.bet-open:focus-visible::after { outline: 2px solid var(--lime); outline-offset: -2px; }
+.bet-history-row .icon-button { position: relative; z-index: 1; }
 .proof-layout {
   display: grid;
   grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.2fr);
