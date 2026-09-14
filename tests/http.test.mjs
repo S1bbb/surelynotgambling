@@ -10,11 +10,24 @@ import { roll, hash } from '../server/fairness.mjs';
 test('independent Web Crypto verifier matches server including Unicode seeds', async () => {
   const source = readFileSync(new URL('../web/lib/verify.ts', import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-  const { verifyRoll } = await import('data:text/javascript;base64,' + Buffer.from(outputText).toString('base64'));
+  const { verifyRoll, verifyHiLo } = await import('data:text/javascript;base64,' + Buffer.from(outputText).toString('base64'));
   for (const seed of ['student', 'проверка 🎲', '123']) for (const nonce of [0, 1, 99, 12345]) {
     const proof = await verifyRoll('a'.repeat(64), seed, nonce);
     assert.equal(proof.commitment, hash('a'.repeat(64)));
     assert.equal(proof.result, roll('a'.repeat(64), seed, nonce));
+  }
+  const form = { serverSeed: 'a'.repeat(64), clientSeed: 'student', nonce: '0', commitment: hash('a'.repeat(64)), threshold: '50', direction: 'under', amount: '100', rtp: '97', recordedResult: '' };
+  const calculated = await verifyHiLo(form);
+  assert.equal(calculated.hashMatches, true);
+  assert.equal(calculated.resultMatches, null);
+  assert.equal(calculated.payout, calculated.result < 5000 ? 19400 : 0);
+  const matched = await verifyHiLo({ ...form, recordedResult: (calculated.result / 100).toFixed(2) });
+  assert.equal(matched.resultMatches, true);
+  const mismatched = await verifyHiLo({ ...form, commitment: '0'.repeat(64), recordedResult: ((calculated.result + 1) % 10000 / 100).toFixed(2) });
+  assert.equal(mismatched.hashMatches, false); assert.equal(mismatched.resultMatches, false);
+  assert.equal((await verifyHiLo({ ...form, commitment: '' })).hashMatches, null);
+  for (const patch of [{ nonce: '' }, { nonce: '-1' }, { nonce: '9007199254740992' }, { serverSeed: '' }, { amount: '1.001' }, { threshold: '0' }, { rtp: '100' }, { recordedResult: '100' }, { commitment: 'bad' }]) {
+    await assert.rejects(verifyHiLo({ ...form, ...patch }));
   }
 });
 test('HTTP flow: place, replay, stale quote, reveal, persistence and origin guard', async () => {

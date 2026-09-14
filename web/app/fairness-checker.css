@@ -1,0 +1,233 @@
+.proof-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1.2fr);
+  gap: 30px;
+  margin-bottom: 32px;
+  align-items: start;
+}
+.proof-form {
+  padding: 28px;
+}
+.proof-game {
+  padding: 16px;
+  border: 1px solid #4a4356;
+  border-radius: 12px;
+  background: #35303e;
+  text-align: center;
+  font-weight: 700;
+}
+.proof-source,
+.proof-wait {
+  font-size: 14px !important;
+  margin: 16px 0 0;
+  color: #abb3ba;
+}
+.proof-wait {
+  color: #e4cc98;
+}
+.proof-field label {
+  margin-top: 20px;
+}
+.proof-field small {
+  display: block;
+  color: #98929f;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 7px;
+}
+.proof-field input,
+.proof-field select {
+  border: 1px solid #3b3742;
+  background: #242128;
+  border-radius: 11px;
+  padding: 15px;
+  font-size: 15px;
+  width: 100%;
+  color: #f1edf5;
+  font-family: inherit;
+}
+.proof-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+.proof-form .primary-button {
+  background: #9870e8;
+  color: #fff;
+  min-height: 52px;
+}
+.proof-form .notice {
+  margin-top: 20px;
+}
+.proof-right {
+  padding-top: 4px;
+  min-width: 0;
+  position: sticky;
+  top: 25px;
+}
+.proof-right > h2 {
+  margin: 0 0 24px;
+  font-size: 21px;
+}
+.proof-result {
+  background: radial-gradient(ellipse at 50% 15%, #302937, #201e24);
+  border: 1px dashed #514958;
+  border-radius: 22px;
+  min-height: 465px;
+  padding: 42px 32px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+.proof-kicker {
+  font-size: 12px;
+  color: #b9accc;
+  letter-spacing: 2px;
+}
+.proof-number {
+  font-size: 76px;
+  letter-spacing: -3px;
+  font-variant-numeric: tabular-nums;
+  margin: 14px 0 32px;
+  color: #f7f2fc;
+}
+.proof-scale {
+  height: 11px;
+  border-radius: 20px;
+  width: 100%;
+  position: relative;
+}
+.proof-threshold {
+  position: absolute;
+  top: -5px;
+  width: 4px;
+  height: 21px;
+  border-radius: 4px;
+  background: #fff;
+  transform: translateX(-50%);
+}
+.proof-pointer {
+  position: absolute;
+  top: -15px;
+  border: 7px solid transparent;
+  border-top-color: #e4cdff;
+  transform: translateX(-50%);
+}
+.proof-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #b2a7bd;
+  margin: 14px 0 20px;
+  width: 100%;
+}
+.proof-payout {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  border-top: 1px solid #463e4c;
+  padding: 20px 0;
+  color: #b7adbf;
+}
+.proof-payout strong {
+  color: #f4edf9;
+}
+.proof-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 6px 0;
+}
+.proof-hash {
+  width: 100%;
+  text-align: left;
+  margin-top: 22px;
+  font-size: 13px;
+  color: #aaa0b6;
+}
+.proof-hash summary {
+  cursor: pointer;
+}
+.proof-hash code {
+  margin-top: 14px;
+}
+.proof-empty {
+  margin: auto;
+  color: #b6a8c8;
+}
+.proof-empty svg {
+  color: #a483d0;
+  margin-bottom: 20px;
+}
+.proof-empty h3 {
+  font-size: 20px;
+  color: #e1d8eb;
+  font-weight: 600;
+}
+.proof-empty p {
+  font-size: 16px;
+  line-height: 1.8;
+  color: #9d93a7;
+}
+.proof-explanation {
+  display: flex;
+  gap: 16px;
+  padding: 24px;
+  margin-top: 22px;
+  background: #19161e;
+  border: 1px solid #302936;
+  border-radius: 15px;
+  color: #a99eb6;
+}
+.proof-explanation svg {
+  color: #ac8edb;
+}
+.proof-explanation p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.proof-explanation strong {
+  display: block;
+  color: #d9cde8;
+  margin-bottom: 5px;
+}
+.proof-copy {
+  margin-top: 20px;
+  min-height: 40px;
+}
+.proof-layout + .details-grid {
+  border-top: 1px solid #343038;
+  padding-top: 30px;
+}
+@media (max-width: 1150px) {
+  .proof-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .proof-right {
+    position: static;
+  }
+  .proof-result {
+    min-height: 360px;
+  }
+}
+@media (max-width: 620px) {
+  .proof-form {
+    padding: 20px;
+  }
+  .proof-result {
+    padding: 32px 20px;
+  }
+  .proof-number {
+    font-size: 66px;
+  }
+  .proof-fields {
+    gap: 0 10px;
+  }
+}

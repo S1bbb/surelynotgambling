@@ -13,9 +13,8 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Wallet,
-  X,
 } from 'lucide-react';
-import { verifyRoll } from '../lib/verify';
+import FairnessChecker from './fairness-checker';
 
 type Round = {
   id: string;
@@ -83,7 +82,6 @@ export default function Home() {
   const [last, setLast] = useState<Round | null>(null);
   const [rtp, setRtp] = useState('97');
   const [selected, setSelected] = useState<Round | null>(null);
-  const [verification, setVerification] = useState('');
   const [rules, setRules] = useState(false);
   useEffect(() => {
     api('state')
@@ -93,14 +91,6 @@ export default function Home() {
       })
       .catch((e) => setError(e.message));
   }, []);
-  useEffect(() => {
-    if (!selected) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelected(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selected]);
   async function action(work: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -170,35 +160,10 @@ export default function Home() {
   }
   const chance = direction === 'under' ? threshold : 100 - threshold;
   const multiplier = state ? state.rtpBps / (chance * 100) : 0;
-  async function verify(round: Round) {
+  function verify(round: Round) {
     setSelected(round);
-    setVerification('');
-    const seed = state?.retired.find((s) => s.commitment === round.commitment);
-    if (!seed) return;
-    try {
-      const proof = await verifyRoll(seed.seed, round.clientSeed, round.nonce);
-      const won =
-        round.direction === 'under'
-          ? proof.result < round.threshold * 100
-          : proof.result >= round.threshold * 100;
-      const outcomes =
-        round.direction === 'under'
-          ? round.threshold * 100
-          : 10000 - round.threshold * 100;
-      const payout = won
-        ? Math.floor((round.amount * round.rtpBps) / outcomes)
-        : 0;
-      setVerification(
-        proof.commitment === round.commitment &&
-          proof.result === round.result &&
-          payout === round.payout &&
-          won === round.won
-          ? 'Проверено: хеш, число и выплата совпадают'
-          : 'Ошибка: данные не совпадают',
-      );
-    } catch {
-      setVerification('Не удалось выполнить проверку в этом браузере');
-    }
+    setTab('fairness');
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }
   useEffect(() => {
     const context = (
@@ -281,7 +246,7 @@ export default function Home() {
                   <button
                     className="icon-button"
                     aria-label="Проверить ставку"
-                    onClick={() => void verify(r)}
+                    onClick={() => verify(r)}
                   >
                     <ShieldCheck size={18} />
                   </button>
@@ -674,96 +639,105 @@ export default function Home() {
                 </section>
               )}
               {tab === 'fairness' && (
-                <div className="details-grid">
-                  <section className="panel">
-                    <div className="section-heading">
-                      <h2>
-                        <ShieldCheck size={21} /> Активная сессия
-                      </h2>
-                      <span className="badge">HMAC-SHA256</span>
-                    </div>
-                    <div className="field-label">Server seed hash</div>
-                    <code className="hash">{state.commitment}</code>
-                    <p className="muted">
-                      Хеш зафиксирован до ставки. Сам seed остаётся секретным до
-                      завершения сессии.
-                    </p>
-                    <label htmlFor="client-seed">Client seed</label>
-                    <input
-                      id="client-seed"
-                      value={clientSeed}
-                      maxLength={128}
-                      disabled={busy || retry}
-                      onChange={(e) => setClientSeed(e.target.value)}
-                    />
-                    <p className="muted">
-                      Ваш вклад в результат. Можно задать любую строку до 128
-                      символов.
-                    </p>
-                    <div className="detail-row">
-                      <span>Следующий nonce</span>
-                      <strong>{state.nonce}</strong>
-                    </div>
-                    <button
-                      className="primary-button"
-                      disabled={busy || retry}
-                      onClick={() =>
-                        void action(async () => {
-                          setState(await api('seeds/rotate', {}));
-                          setMessage(
-                            'Сессия завершена. Seed раскрыт, ставки доступны для проверки.',
-                          );
-                        })
-                      }
-                    >
-                      Завершить сессию и раскрыть seed
-                    </button>
-                  </section>
-                  <section className="panel explain">
-                    <h2>Как проверить ставку</h2>
-                    <div>
-                      <b>01</b>
-                      <p>
-                        <strong>До игры</strong>Сохраните хеш server seed и
-                        выберите свой client seed.
-                      </p>
-                    </div>
-                    <div>
-                      <b>02</b>
-                      <p>
-                        <strong>После игры</strong>Завершите сессию, чтобы
-                        сервер раскрыл использованный seed.
-                      </p>
-                    </div>
-                    <div>
-                      <b>03</b>
-                      <p>
-                        <strong>Сравните результат</strong>Нажмите щит в
-                        истории. Браузер независимо проверит хеш, число и
-                        выплату.
-                      </p>
-                    </div>
-                    <p className="muted">
-                      RTP меняет выплату, а не случайное число. Теоретический
-                      RTP не гарантирует результат отдельной сессии.
-                    </p>
-                  </section>
-                  <section className="panel wide">
-                    <h2>Раскрытые сессии</h2>
-                    {!state.retired.length && (
-                      <p className="muted">Пока нет завершённых сессий.</p>
-                    )}
-                    {[...state.retired].reverse().map((s) => (
-                      <div className="seed-row" key={s.commitment}>
-                        <span>Ставок: {s.bets}</span>
-                        <div className="field-label">Server seed</div>
-                        <code className="hash">{s.seed}</code>
-                        <div className="field-label">SHA-256</div>
-                        <code className="hash">{s.commitment}</code>
+                <>
+                  <FairnessChecker
+                    key={
+                      (selected?.id || 'manual') + ':' + state.retired.length
+                    }
+                    round={selected}
+                    retired={state.retired}
+                  />
+                  <div className="details-grid">
+                    <section className="panel">
+                      <div className="section-heading">
+                        <h2>
+                          <ShieldCheck size={21} /> Активная сессия
+                        </h2>
+                        <span className="badge">HMAC-SHA256</span>
                       </div>
-                    ))}
-                  </section>
-                </div>
+                      <div className="field-label">Server seed hash</div>
+                      <code className="hash">{state.commitment}</code>
+                      <p className="muted">
+                        Хеш зафиксирован до ставки. Сам seed остаётся секретным
+                        до завершения сессии.
+                      </p>
+                      <label htmlFor="client-seed">Client seed</label>
+                      <input
+                        id="client-seed"
+                        value={clientSeed}
+                        maxLength={128}
+                        disabled={busy || retry}
+                        onChange={(e) => setClientSeed(e.target.value)}
+                      />
+                      <p className="muted">
+                        Ваш вклад в результат. Можно задать любую строку до 128
+                        символов.
+                      </p>
+                      <div className="detail-row">
+                        <span>Следующий nonce</span>
+                        <strong>{state.nonce}</strong>
+                      </div>
+                      <button
+                        className="primary-button"
+                        disabled={busy || retry}
+                        onClick={() =>
+                          void action(async () => {
+                            setState(await api('seeds/rotate', {}));
+                            setMessage(
+                              'Сессия завершена. Seed раскрыт, ставки доступны для проверки.',
+                            );
+                          })
+                        }
+                      >
+                        Завершить сессию и раскрыть seed
+                      </button>
+                    </section>
+                    <section className="panel explain">
+                      <h2>Как проверить ставку</h2>
+                      <div>
+                        <b>01</b>
+                        <p>
+                          <strong>До игры</strong>Сохраните хеш server seed и
+                          выберите свой client seed.
+                        </p>
+                      </div>
+                      <div>
+                        <b>02</b>
+                        <p>
+                          <strong>После игры</strong>Завершите сессию, чтобы
+                          сервер раскрыл использованный seed.
+                        </p>
+                      </div>
+                      <div>
+                        <b>03</b>
+                        <p>
+                          <strong>Сравните результат</strong>Нажмите щит в
+                          истории. Браузер независимо проверит хеш, число и
+                          выплату.
+                        </p>
+                      </div>
+                      <p className="muted">
+                        RTP меняет выплату, а не случайное число. Теоретический
+                        RTP не гарантирует результат отдельной сессии.
+                      </p>
+                    </section>
+                    <section className="panel wide">
+                      <h2>Раскрытые сессии</h2>
+                      {!state.retired.length && (
+                        <p className="muted">Пока нет завершённых сессий.</p>
+                      )}
+                      {[...state.retired].reverse().map((s) => (
+                        <div className="seed-row" key={s.commitment}>
+                          <span>Ставок: {s.bets}</span>
+                          <div className="field-label">Server seed</div>
+                          <code className="hash">{s.seed}</code>
+                          <div className="field-label">SHA-256</div>
+                          <code className="hash">{s.commitment}</code>
+                        </div>
+                      ))}
+                    </section>
+                  </div>
+                </>
               )}
               {tab === 'admin' && (
                 <>
@@ -874,60 +848,6 @@ export default function Home() {
           </footer>
         </main>
       </div>
-      {selected && (
-        <div className="modal-backdrop">
-          <dialog
-            className="modal panel"
-            aria-label="Проверка ставки"
-            ref={(element) => {
-              if (element && !element.open) element.showModal();
-            }}
-            onCancel={() => setSelected(null)}
-          >
-            <div className="section-heading">
-              <h2>Проверка ставки</h2>
-              <button
-                autoFocus
-                className="icon-button"
-                aria-label="Закрыть"
-                onClick={() => setSelected(null)}
-              >
-                <X />
-              </button>
-            </div>
-            <p className="muted">{selected.id}</p>
-            <div className="field-label">Зафиксированный хеш</div>
-            <code className="hash">{selected.commitment}</code>
-            <div className="field-label">Client seed</div>
-            <code className="hash">{selected.clientSeed}</code>
-            <div className="detail-row">
-              <span>Nonce</span>
-              <strong>{selected.nonce}</strong>
-            </div>
-            <div className="detail-row">
-              <span>Результат</span>
-              <strong>{(selected.result / 100).toFixed(2)}</strong>
-            </div>
-            <div className="detail-row">
-              <span>RTP этой ставки</span>
-              <strong>{selected.rtpBps / 100}%</strong>
-            </div>
-            <output className="notice">
-              {verification ||
-                'Завершите сессию во вкладке «Честность игры», чтобы раскрыть seed и проверить эту ставку.'}
-            </output>
-            <button
-              className="primary-button"
-              onClick={() => {
-                setSelected(null);
-                setTab('fairness');
-              }}
-            >
-              Открыть честность игры
-            </button>
-          </dialog>
-        </div>
-      )}
     </div>
   );
 }
