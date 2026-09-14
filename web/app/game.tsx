@@ -13,60 +13,23 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Wallet,
+  LayoutGrid,
+  Mountain,
 } from 'lucide-react';
 import FairnessChecker from './fairness-checker';
-
-type Round = {
-  id: string;
-  amount: number;
-  payout: number;
-  won: boolean;
-  result: number;
-  threshold: number;
-  direction: string;
-  clientSeed: string;
-  nonce: number;
-  commitment: string;
-  rtpBps: number;
-  multiplier: number;
-  createdAt: string;
-};
-type State = {
-  balance: number;
-  rtpBps: number;
-  version: number;
-  commitment: string;
-  nonce: number;
-  rounds: Round[];
-  retired: { seed: string; commitment: string; bets: number }[];
-  audit: { from: number; to: number; at: string; version: number }[];
-  stats: { count: number; wagered: number; paid: number };
-};
+import Lobby from './lobby';
+import LadderGame from './ladder-game';
+import LadderChecker from './ladder-checker';
+import type { HiLoRound, Round, State } from '../lib/models';
+import { api, ApiError } from '../lib/api';
 const money = (n: number) =>
   (n / 100).toLocaleString('ru-RU', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-class ApiError extends Error {}
-async function api<T = State>(path: string, body?: unknown) {
-  const response = await fetch(
-    '/api/' + path,
-    body === undefined
-      ? {}
-      : {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-  );
-  const data = (await response.json()) as T & { error?: string };
-  if (!response.ok)
-    throw new ApiError(data.error || 'Не удалось выполнить запрос');
-  return data;
-}
 export default function Home() {
   const [state, setState] = useState<State | null>(null);
-  const [tab, setTab] = useState('game');
+  const [tab, setTab] = useState('lobby');
   const [amount, setAmount] = useState('100');
   const [threshold, setThreshold] = useState(50);
   const [direction, setDirection] = useState('under');
@@ -79,9 +42,10 @@ export default function Home() {
   const [retry, setRetry] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [last, setLast] = useState<Round | null>(null);
+  const [last, setLast] = useState<HiLoRound | null>(null);
   const [rtp, setRtp] = useState('97');
   const [selected, setSelected] = useState<Round | null>(null);
+  const [proofGame, setProofGame] = useState('hilo');
   const [rules, setRules] = useState(false);
   useEffect(() => {
     api('state')
@@ -135,7 +99,7 @@ export default function Home() {
       }
       let result;
       try {
-        result = await api<{ round: Round; state: State }>(
+        result = await api<{ round: HiLoRound; state: State }>(
           'bets',
           pending.current,
         );
@@ -162,6 +126,7 @@ export default function Home() {
   const multiplier = state ? state.rtpBps / (chance * 100) : 0;
   function verify(round: Round) {
     setSelected(round);
+    setProofGame(round.game === 'ladder' ? 'ladder' : 'hilo');
     setTab('fairness');
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
@@ -206,7 +171,9 @@ export default function Home() {
     return () => lifecycle.abort();
   }, []);
   const navigation = [
+    { id: 'lobby', label: 'Все игры', icon: LayoutGrid },
     { id: 'game', label: 'Больше / меньше', icon: Dices },
+    { id: 'ladder', label: 'Лестница', icon: Mountain },
     { id: 'history', label: 'История ставок', icon: History },
     { id: 'fairness', label: 'Честность игры', icon: ShieldCheck },
     { id: 'admin', label: 'Администратор', icon: Settings2 },
@@ -218,9 +185,10 @@ export default function Home() {
           <thead>
             <tr>
               <th>Время</th>
+              <th>Игра</th>
               <th>Ставка</th>
               <th>Условие</th>
-              <th>Число</th>
+              <th>Результат</th>
               <th>Выплата</th>
               <th>Проверка</th>
             </tr>
@@ -229,16 +197,29 @@ export default function Home() {
             {rounds.map((r) => (
               <tr key={r.id} className="bet-history-row">
                 <td>{new Date(r.createdAt).toLocaleTimeString('ru-RU')}</td>
-                <td><button className="bet-open" aria-label={`Открыть и проверить ставку ${r.id.slice(0, 8)}`} onClick={() => verify(r)}>{money(r.amount)}</button></td>
+                <td>{r.game === 'ladder' ? 'Лестница' : 'Hi-Lo'}</td>
                 <td>
-                  {r.direction === 'under' ? '<' : '≥'} {r.threshold}{' '}
+                  <button
+                    className="bet-open"
+                    aria-label={`Открыть и проверить ставку ${r.id.slice(0, 8)}`}
+                    onClick={() => verify(r)}
+                  >
+                    {money(r.amount)}
+                  </button>
+                </td>
+                <td>
+                  {r.game === 'ladder'
+                    ? `${r.rocks} камн. / ступень`
+                    : `${r.direction === 'under' ? '<' : '≥'} ${r.threshold}`}{' '}
                   <small>×{r.multiplier.toFixed(4)}</small>
                 </td>
                 <td>
                   <span
                     className={r.won ? 'result-tag won' : 'result-tag lost'}
                   >
-                    {(r.result / 100).toFixed(2)}
+                    {r.game === 'ladder'
+                      ? `${r.steps} / 8 · ${r.status === 'lost' ? 'камень' : r.status === 'completed' ? 'вершина' : 'забрал'}`
+                      : (r.result / 100).toFixed(2)}
                   </span>
                 </td>
                 <td className={r.won ? 'green' : 'muted'}>{money(r.payout)}</td>
@@ -326,17 +307,24 @@ export default function Home() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                SNG ORIGINALS <span>/ 01</span>
+                SNG ORIGINALS{' '}
+                <span>
+                  / {tab === 'ladder' ? '02' : tab === 'game' ? '01' : 'LOBBY'}
+                </span>
               </div>
               <h1>{navigation.find((n) => n.id === tab)?.label}</h1>
               <p>
                 {tab === 'game'
                   ? 'Выберите сторону. Задайте порог. Испытайте удачу.'
-                  : tab === 'admin'
-                    ? 'Условия игры и статистика локальной площадки.'
-                    : tab === 'history'
-                      ? 'Результаты с сохранёнными условиями каждой ставки.'
-                      : 'Сначала обязательство. Затем результат. После — доказательство.'}
+                  : tab === 'lobby'
+                    ? 'Выберите свою игру. Каждую ставку можно проверить.'
+                    : tab === 'ladder'
+                      ? 'Выберите сложность. Обойдите камни. Заберите выигрыш.'
+                      : tab === 'admin'
+                        ? 'Условия игры и статистика локальной площадки.'
+                        : tab === 'history'
+                          ? 'Результаты с сохранёнными условиями каждой ставки.'
+                          : 'Сначала обязательство. Затем результат. После — доказательство.'}
               </p>
             </div>
             <span className="demo-pill">
@@ -364,6 +352,33 @@ export default function Home() {
             </section>
           ) : (
             <>
+              {tab === 'lobby' && <Lobby state={state} open={setTab} />}
+              {tab === 'ladder' && (
+                <>
+                  <LadderGame
+                    state={state}
+                    update={setState}
+                    clientSeed={clientSeed}
+                    verify={verify}
+                  />
+                  <section className="history-section">
+                    <div className="section-heading">
+                      <h2>Последние лестницы</h2>
+                      <button
+                        className="text-button"
+                        onClick={() => setTab('history')}
+                      >
+                        Вся история <ArrowUpRight size={16} />
+                      </button>
+                    </div>
+                    {history(
+                      state.rounds
+                        .filter((r) => r.game === 'ladder')
+                        .slice(0, 6),
+                    )}
+                  </section>
+                </>
+              )}
               {tab === 'game' && (
                 <>
                   <section className="game-panel">
@@ -625,7 +640,11 @@ export default function Home() {
                         Вся история <ArrowUpRight size={16} />
                       </button>
                     </div>
-                    {history(state.rounds.slice(0, 6))}
+                    {history(
+                      state.rounds
+                        .filter((r) => r.game !== 'ladder')
+                        .slice(0, 6),
+                    )}
                   </section>
                 </>
               )}
@@ -640,13 +659,48 @@ export default function Home() {
               )}
               {tab === 'fairness' && (
                 <>
-                  <FairnessChecker
-                    key={
-                      (selected?.id || 'manual') + ':' + state.retired.length
-                    }
-                    round={selected}
-                    retired={state.retired}
-                  />
+                  <div
+                    className="proof-game-switch"
+                    aria-label="Игра для проверки"
+                  >
+                    <button
+                      className={proofGame === 'hilo' ? 'chosen' : ''}
+                      aria-pressed={proofGame === 'hilo'}
+                      onClick={() => {
+                        setProofGame('hilo');
+                        setSelected(null);
+                      }}
+                    >
+                      Больше / меньше
+                    </button>
+                    <button
+                      className={proofGame === 'ladder' ? 'chosen' : ''}
+                      aria-pressed={proofGame === 'ladder'}
+                      onClick={() => {
+                        setProofGame('ladder');
+                        setSelected(null);
+                      }}
+                    >
+                      Лестница
+                    </button>
+                  </div>
+                  {proofGame === 'ladder' ? (
+                    <LadderChecker
+                      key={
+                        (selected?.id || 'manual') + ':' + state.retired.length
+                      }
+                      round={selected?.game === 'ladder' ? selected : null}
+                      retired={state.retired}
+                    />
+                  ) : (
+                    <FairnessChecker
+                      key={
+                        (selected?.id || 'manual') + ':' + state.retired.length
+                      }
+                      round={selected?.game === 'ladder' ? null : selected}
+                      retired={state.retired}
+                    />
+                  )}
                   <div className="details-grid">
                     <section className="panel">
                       <div className="section-heading">
@@ -679,7 +733,7 @@ export default function Home() {
                       </div>
                       <button
                         className="primary-button"
-                        disabled={busy || retry}
+                        disabled={busy || retry || Boolean(state.activeLadder)}
                         onClick={() =>
                           void action(async () => {
                             setState(await api('seeds/rotate', {}));
@@ -691,6 +745,20 @@ export default function Home() {
                       >
                         Завершить сессию и раскрыть seed
                       </button>
+                      {state.activeLadder && (
+                        <div className="ladder-seed-lock">
+                          <p>
+                            Сначала завершите активную лестницу. Раскрытие seed
+                            открыло бы будущие камни.
+                          </p>
+                          <button
+                            className="text-button"
+                            onClick={() => setTab('ladder')}
+                          >
+                            Вернуться к лестнице <ArrowUpRight size={16} />
+                          </button>
+                        </div>
+                      )}
                     </section>
                     <section className="panel explain">
                       <h2>Как проверить ставку</h2>
@@ -768,10 +836,10 @@ export default function Home() {
                   </div>
                   <div className="details-grid">
                     <section className="panel">
-                      <h2>Условия Hi-Lo</h2>
+                      <h2>RTP всех игр</h2>
                       <p className="muted">
-                        Настройки применяются к новым ставкам. Игрок видит
-                        актуальный RTP перед игрой.
+                        Настройки применяются к новым ставкам Hi-Lo и новым
+                        лестницам. Начатая лестница сохраняет свой RTP.
                       </p>
                       <label htmlFor="rtp">Теоретический RTP, %</label>
                       <input

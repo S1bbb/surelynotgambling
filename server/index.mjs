@@ -4,6 +4,7 @@ import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JsonRepository } from './repository.mjs';
 import { initialState, snapshot, placeBet, rotate, configure } from './service.mjs';
+import { startLadder, stepLadder, cashoutLadder } from './ladder.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const repo = new JsonRepository(resolve(process.env.DATA_FILE || root + '/data/state.json'), initialState);
@@ -27,6 +28,8 @@ const server = createServer(async (req, res) => {
       let body; try { body = JSON.parse(raw); } catch { return json({ error: 'Некорректный JSON' }, 400); }
       if (!body || Array.isArray(body) || typeof body !== 'object') return json({ error: 'Ожидается объект' }, 400);
       if (url.pathname === '/api/bets') return json(await repo.transaction(s => ({ round: placeBet(s, body), state: snapshot(s) })));
+      const ladderActions = { '/api/ladder/start': startLadder, '/api/ladder/step': stepLadder, '/api/ladder/cashout': cashoutLadder };
+      if (Object.hasOwn(ladderActions, url.pathname)) return json(await repo.transaction(s => ({ round: ladderActions[url.pathname](s, body), state: snapshot(s) })));
       if (url.pathname === '/api/seeds/rotate') return json(await repo.transaction(rotate));
       if (url.pathname === '/api/admin/config') return json(await repo.transaction(s => configure(s, body)));
       return json({ error: 'Не найдено' }, 404);

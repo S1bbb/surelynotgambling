@@ -62,6 +62,22 @@ test('HTTP flow: place, replay, stale quote, reveal, persistence and origin guar
     await stop(); base = await start(); const restored = await get();
     assert.equal(restored.balance, first.state.balance); assert.equal(restored.commitment, rotated.commitment);
     assert.equal(restored.rtpBps, 9200);
+    const ladder = await (await post('ladder/start', { requestId: 'http-ladder-00000001', amount: 10000, rocks: 2, clientSeed: 'coursework', version: restored.version, commitment: restored.commitment })).json();
+    assert.equal(ladder.round.status, 'active');
+    assert.equal(ladder.state.activeLadder.board, undefined);
+    assert.equal((await post('seeds/rotate', {})).status, 400);
+    await stop(); base = await start();
+    assert.equal((await get()).activeLadder.id, ladder.round.id);
+    const secretNow = JSON.parse(readFileSync(join(dir,'state.json'),'utf8')).seed;
+    const { ladderBoard } = await import('../server/ladder.mjs');
+    const cells = ladderBoard(secretNow, 'coursework', ladder.round.nonce, 2);
+    const safeColumn = [0,1,2,3,4].find(c => !cells[0].includes(c));
+    const step = await (await post('ladder/step', { roundId: ladder.round.id, step: 0, column: safeColumn })).json();
+    assert.equal(step.round.steps,1); assert.equal(step.round.board, undefined);
+    const cashout = await (await post('ladder/cashout', { roundId: ladder.round.id, steps: 1 })).json();
+    assert.equal(cashout.round.status,'cashed');assert.deepEqual(cashout.round.board,cells);
+    assert.equal(cashout.state.activeLadder,null);
+    assert.equal((await post('seeds/rotate', {})).status,200);
     assert.equal((await fetch(base + '/')).status, 200);
   } finally { if (child) await stop(); rmSync(dir, { recursive: true, force: true }); }
 });
