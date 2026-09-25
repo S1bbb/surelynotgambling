@@ -1,4 +1,6 @@
+export type LadderProtocol = 'stairs-v1' | 'stairs-v2';
 export type LadderProofInput = {
+  protocol: LadderProtocol;
   serverSeed: string;
   clientSeed: string;
   nonce: string;
@@ -11,10 +13,23 @@ export type LadderProofInput = {
   recordedPayout: string;
   recordedStatus: string;
 };
+export const LADDER_SPECS: Record<
+  LadderProtocol,
+  { widths: number[]; maxRocks: number }
+> = {
+  'stairs-v1': { widths: Array(8).fill(5), maxRocks: 4 },
+  'stairs-v2': {
+    widths: Array.from({ length: 12 }, (_, i) => 19 - i),
+    maxRocks: 7,
+  },
+};
 
-// Independent browser implementation of stairs-v1. No API or server module imports.
+// Independent browser implementation of stairs-v1/v2. No API or server module imports.
 export async function verifyLadder(input: LadderProofInput) {
   const { serverSeed, clientSeed, commitment } = input;
+  const spec = LADDER_SPECS[input.protocol];
+  if (!spec) throw Error('Неизвестная версия лестницы.');
+  const { widths, maxRocks } = spec;
   if (!/^[a-f0-9]{64}$/.test(serverSeed))
     throw Error('Server seed: 64 символа 0–9 и a–f.');
   if (!clientSeed.length || clientSeed.length > 128)
@@ -23,7 +38,8 @@ export async function verifyLadder(input: LadderProofInput) {
     throw Error('Nonce: целое неотрицательное число.');
   if (commitment && !/^[a-fA-F0-9]{64}$/.test(commitment))
     throw Error('SHA-256: 64 шестнадцатеричных символа.');
-  if (!/^[1-4]$/.test(input.rocks)) throw Error('Выберите от 1 до 4 камней.');
+  if (!/^\d+$/.test(input.rocks) || Number(input.rocks) < 1 || Number(input.rocks) > maxRocks)
+    throw Error(`Выберите от 1 до ${maxRocks} камней.`);
   if (
     !/^\d+(\.\d{1,2})?$/.test(input.amount) ||
     Number(input.amount) < 1 ||
@@ -36,11 +52,19 @@ export async function verifyLadder(input: LadderProofInput) {
     Number(input.rtp) > 99
   )
     throw Error('RTP: от 80 до 99%.');
+  const moves = input.path.trim()
+    ? input.path
+        .trim()
+        .split(',')
+        .map((v) => Number(v.trim()) - 1)
+    : [];
   if (
-    input.path.trim() &&
-    !/^[1-5](\s*,\s*[1-5]){0,7}$/.test(input.path.trim())
+    moves.length > widths.length ||
+    moves.some((c, row) => !Number.isInteger(c) || c < 0 || c >= widths[row])
   )
-    throw Error('Путь: до 8 номеров клеток от 1 до 5, через запятую.');
+    throw Error(
+      `Путь: до ${widths.length} номеров клеток через запятую; на ступени n — от 1 до ${widths[0]} (ширина ступени).`,
+    );
   if (
     input.recordedPayout &&
     (!/^\d+(\.\d{1,2})?$/.test(input.recordedPayout) ||
@@ -54,12 +78,6 @@ export async function verifyLadder(input: LadderProofInput) {
     throw Error('Неизвестный итог раунда.');
   const rocks = Number(input.rocks),
     nonce = Number(input.nonce);
-  const moves = input.path.trim()
-    ? input.path
-        .trim()
-        .split(',')
-        .map((v) => Number(v.trim()) - 1)
-    : [];
   let recordedBoard: number[][] | null = null;
   if (input.recordedBoard.trim()) {
     let parsed: unknown;
@@ -70,19 +88,24 @@ export async function verifyLadder(input: LadderProofInput) {
     }
     if (
       !Array.isArray(parsed) ||
-      parsed.length !== 8 ||
+      parsed.length !== widths.length ||
       !parsed.every(
-        (row: unknown) =>
+        (row: unknown, i) =>
           Array.isArray(row) &&
           row.length === rocks &&
           row.every(
             (v: unknown) =>
-              typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 5,
+              typeof v === 'number' &&
+              Number.isInteger(v) &&
+              v >= 0 &&
+              v < widths[i],
           ) &&
           new Set(row).size === rocks,
       )
     )
-      throw Error('Карта: 8 массивов с номерами камней 0–4, без повторов.');
+      throw Error(
+        `Карта: ${widths.length} массивов с номерами камней в пределах ступени, без повторов.`,
+      );
     recordedBoard = (parsed as number[][]).map((row) =>
       [...row].sort((a, b) => a - b),
     );
@@ -102,13 +125,13 @@ export async function verifyLadder(input: LadderProofInput) {
     ['sign'],
   );
   const board: number[][] = [];
-  for (let row = 0; row < 8; row++) {
-    const cells = [0, 1, 2, 3, 4];
-    for (let i = 4; i > 0; i--) {
+  for (let row = 0; row < widths.length; row++) {
+    const cells = Array.from({ length: widths[row] }, (_, i) => i);
+    for (let i = widths[row] - 1; i > 0; i--) {
       const limit = Math.floor(4294967296 / (i + 1)) * (i + 1);
       for (let cursor = 0; ; cursor++) {
         const message = JSON.stringify([
-          'stairs-v1',
+          input.protocol,
           clientSeed,
           nonce,
           rocks,
@@ -137,11 +160,17 @@ export async function verifyLadder(input: LadderProofInput) {
   const status =
     hit >= 0
       ? 'lost'
-      : steps === 8
+      : steps === widths.length
         ? 'completed'
         : steps > 0
           ? 'cashed'
           : 'unplayed';
+  let cellsProduct = 1n,
+    safeProduct = 1n;
+  for (const w of widths.slice(0, steps)) {
+    cellsProduct *= BigInt(w);
+    safeProduct *= BigInt(w - rocks);
+  }
   const payout =
     status === 'unplayed'
       ? null
@@ -150,11 +179,12 @@ export async function verifyLadder(input: LadderProofInput) {
         : Number(
             (BigInt(Math.round(Number(input.amount) * 100)) *
               BigInt(Math.round(Number(input.rtp) * 100)) *
-              5n ** BigInt(steps)) /
-              (10000n * BigInt(5 - rocks) ** BigInt(steps)),
+              cellsProduct) /
+              (10000n * safeProduct),
           );
   return {
     board,
+    widths,
     moves,
     rocks,
     steps,
@@ -177,3 +207,33 @@ export async function verifyLadder(input: LadderProofInput) {
       : null,
   };
 }
+
+// Shared formulas for the game screen: payout after `steps` safe steps, floored once.
+export function ladderPayout(
+  amount: number,
+  rtpBps: number,
+  rocks: number,
+  steps: number,
+  widths: number[],
+) {
+  if (steps === 0 || !Number.isSafeInteger(amount) || amount < 0) return 0;
+  let cells = 1n,
+    safe = 1n;
+  for (const w of widths.slice(0, steps)) {
+    cells *= BigInt(w);
+    safe *= BigInt(w - rocks);
+  }
+  return Number((BigInt(amount) * BigInt(rtpBps) * cells) / (10000n * safe));
+}
+export const ladderMultiplier = (
+  rtpBps: number,
+  rocks: number,
+  steps: number,
+  widths: number[],
+) =>
+  widths
+    .slice(0, steps)
+    .reduce((m, w) => (m * w) / (w - rocks), rtpBps / 10000);
+// Probability of surviving steps 1..steps.
+export const ladderReach = (rocks: number, steps: number, widths: number[]) =>
+  widths.slice(0, steps).reduce((p, w) => (p * (w - rocks)) / w, 1);

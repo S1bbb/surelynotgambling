@@ -15,6 +15,8 @@ export class JsonRepository {
     this.queue = Promise.resolve();
   }
   read() { return structuredClone(this.state); }
+  // Read-only access to the committed state without copying it.
+  peek(fn) { return fn(this.state); }
   transaction(fn) {
     const work = this.queue.then(() => {
       const next = structuredClone(this.state);

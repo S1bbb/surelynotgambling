@@ -14,6 +14,7 @@ export default function LadderChecker({
   retired: State['retired'];
 }) {
   const [form, setForm] = useState<LadderProofInput>(() => ({
+    protocol: round?.protocol ?? 'stairs-v2',
     serverSeed:
       retired.find((s) => s.commitment === round?.commitment)?.seed || '',
     clientSeed: round?.clientSeed || '',
@@ -116,9 +117,11 @@ export default function LadderChecker({
       >
         <div className="section-heading">
           <h2>Данные лестницы</h2>
-          <span className="badge">STAIRS · v1</span>
+          <span className="badge">{form.protocol.toUpperCase()}</span>
         </div>
-        <div className="proof-game">8 ступеней · 5 клеток</div>
+        <div className="proof-game">
+          {form.protocol === 'stairs-v1' ? '8 ступеней · 5 клеток (старая версия)' : '12 ступеней · от 19 до 8 клеток'}
+        </div>
         {round && (
           <p className="proof-source">
             Из истории · ставка {round.id.slice(0, 8)}
@@ -150,7 +153,7 @@ export default function LadderChecker({
         {field(
           'path',
           'Ваш путь снизу вверх',
-          'Номера клеток 1–5 через запятую, например: 2, 4, 1. Пустой путь покажет только карту.',
+          'Номера клеток через запятую, снизу вверх, например: 2, 14, 1. Пустой путь покажет только карту.',
         )}
         <details className="ladder-proof-details">
           <summary>Данные из истории для сравнения</summary>
@@ -160,11 +163,11 @@ export default function LadderChecker({
               id="stairs-board"
               rows={4}
               value={form.recordedBoard}
-              maxLength={300}
+              maxLength={1200}
               disabled={busy}
               onChange={(e) => change('recordedBoard', e.target.value)}
             />
-            <small>8 строк, индексы клеток 0–4. Необязательно.</small>
+            <small>По строке на ступень, индексы клеток с 0. Необязательно.</small>
           </div>
           {field('recordedPayout', 'Записанная выплата, CR', 'Необязательно')}
           {field(
@@ -190,6 +193,7 @@ export default function LadderChecker({
             <>
               <span className="proof-kicker">ВОССТАНОВЛЕННАЯ КАРТА</span>
               <LadderBoard
+                widths={result.widths}
                 rocks={result.rocks}
                 moves={result.moves}
                 board={result.board}
@@ -200,7 +204,7 @@ export default function LadderChecker({
                   : result.status === 'lost'
                     ? `Камень на ступени ${result.hit + 1}`
                     : result.status === 'completed'
-                      ? 'Вершина пройдена — 8 / 8'
+                      ? `Вершина пройдена — ${result.widths.length} / ${result.widths.length}`
                       : `Выигрыш забран после ступени ${result.steps}`}
               </p>
               {result.payout !== null && (
@@ -263,7 +267,7 @@ export default function LadderChecker({
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(
-                JSON.stringify({ protocol: 'stairs-v1', ...form }, null, 2),
+                JSON.stringify(form, null, 2),
               );
               setCopied(true);
             } catch {
